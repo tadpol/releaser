@@ -10,16 +10,17 @@ This *must* be run from the top directory of the project.
 
 ## Requirements
 - Using an .xcworkspace
-- Using CocoaPods
-- xctool is installed
+- Using [CocoaPods](http://cocoapods.org)
+- [xctool](https://github.com/facebook/xctool) is installed
 - Have a ReleaseNotes.markdown file in same directory as .xcworkspace
+- Format the ReleaseNotes.markdown the same way I do.
 - Specify either the HockeySDK or TestFlightSDK in Podfile
 - Build target is the rootname of the xcworkspace
 - Build scheme is the same name as the target
 - For TestFlight and HockeyApp, API tokens are in the keychain as internet passwords.
   - service `http://TF_API_TOKEN`, Account name is target name
   - service `http://TF_TEAM_TOKEN`, Account name is target name
-	- service `http://HOCKEYAPP_TOKEN`, Account name is target name
+  - service `http://HOCKEYAPP_TOKEN`, Account name is target name
 
 ## The list of things this is trying to automate
 - Update (short) version string
