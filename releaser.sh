@@ -47,7 +47,7 @@ fi
 echo -e "\033[1m=]\033[0m Will release version $shortVersion"
 
 ### Run Unit Tests
-#dryrunp xctool -workspace "$workspace" -scheme "$scheme" -sdk iphonesimulator7.1 test
+dryrunp xctool -workspace "$workspace" -scheme "$scheme" -sdk iphonesimulator7.1 test
 
 ### Build the Archive
 dryrunp xctool -workspace "$workspace" -scheme "$scheme" archive
