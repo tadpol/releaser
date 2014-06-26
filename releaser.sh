@@ -68,7 +68,7 @@ dryrunp git push
 
 #### Grab some stuff for hockey app.
 gitRepo=$(git remote -v | head -1 | awk '{print $2}')
-gitSHA=$(git show-ref | awk '{print $1}')
+gitSHA=$(git show-ref heads/master | head -1 | awk '{print $1}')
 
 # For Jira Kanban for this project, Release
 # TODO: how to script this?
@@ -87,7 +87,7 @@ dryrunp xcrun -sdk iphoneos PackageApplication "$archivePath/Products/$appPath" 
 
 dsymPath=$archivePath/dSYMs/${appName}.app.dSYM
 dsymZipped=$td/${appName}.app.dSYM.zip
-dryrunp zip -r -9 "$dsymZipped" "$dsymPath"
+dryrunp zip -q -r -9 "$dsymZipped" "$dsymPath"
 
 releasedNote=$td/ReleasedNote.markdown
 awk '
@@ -104,9 +104,8 @@ off==1 { print }
 
 # HockeyApp upload
 if [ "n$uploadto" = "nHockeyApp" ]; then
-	exit 2
 
-	tfteamtoken=$(security 2>&1 >/dev/null find-internet-password -gs HOCKEYAPP_TOKEN -a "$appName" | cut -d '"' -f 2)
+	hockeyToken=$(security 2>&1 >/dev/null find-internet-password -gs HOCKEYAPP_TOKEN -a "$appName" | cut -d '"' -f 2)
 	if [ "n$hockeyToken" = "n" ]; then
 		echo "Missing token for upload!!!"
 		exit 1
