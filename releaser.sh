@@ -145,6 +145,10 @@ if [ "n$uploadto" = "nTestFlight" ]; then
   
 fi
 
+# just copy to Downloads
+if [ "n$uploadto" = "nnone" ]; then
+  mv "$dsymZipped" "$ipa" ~/Downloads/
+fi
 
 ### Cleanup
 rm -rf $td
