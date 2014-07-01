@@ -79,7 +79,8 @@ gitSHA=$(git show-ref heads/master | head -1 | awk '{print $1}')
 archivePath=$(find ~/Library/Developer/Xcode/Archives -type d -name "$target*.xcarchive" | tail -1)
 #echo -e "\033[1m=:\033[0m archivePath=$archivePath"
 appPath=$(/usr/libexec/PlistBuddy -c "Print :ApplicationProperties:ApplicationPath" "$archivePath/Info.plist" )
-appName=$(/usr/libexec/PlistBuddy -c "Print :Name" "$archivePath/Info.plist" )
+#appName=$(/usr/libexec/PlistBuddy -c "Print :Name" "$archivePath/Info.plist" )
+appName=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$archivePath/Products/$appPath/Info.plist")
 echo -e "\033[1m=:\033[0m appName=$appName  appPath=$appPath"
 
 ipa=$td/${appName}.ipa
