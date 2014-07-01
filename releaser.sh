@@ -23,9 +23,9 @@ target=$(basename -s .xcworkspace "$workspace")
 infoFile=$(find . -name "$target-Info.plist")
 uploadto=none
 if (grep -q HockeySDK Podfile); then
-	uploadto=HockeyApp
+  uploadto=HockeyApp
 elif (grep -q TestFlightSDK Podfile); then
-	uploadto=TestFlight
+  uploadto=TestFlight
 fi
 releaseNotes=$(dirname "$workspace")/ReleaseNotes.markdown
 
@@ -41,8 +41,8 @@ shortVersion=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$
 echo -ne "\033[1m=)\033[0m Enter the version you want to release ($shortVersion) "
 read preferredVersion
 if [ "n$preferredVersion" != "n" ]; then
-	shortVersion=$preferredVersion
-	dryrunp /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $preferredVersion" "$infoFile"
+  shortVersion=$preferredVersion
+  dryrunp /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $preferredVersion" "$infoFile"
 fi
 echo -e "\033[1m=]\033[0m Will release version $shortVersion"
 
@@ -95,9 +95,9 @@ awk '
 BEGIN { off=0 }
 off==0 {}
 off==0 && /^## / {
-	off=1
-	print
-	next
+  off=1
+  print
+  next
 }
 off==1 && /^## / { exit }
 off==1 { print }
@@ -106,47 +106,47 @@ off==1 { print }
 # HockeyApp upload
 if [ "n$uploadto" = "nHockeyApp" ]; then
 
-	hockeyToken=$(security 2>&1 >/dev/null find-internet-password -gs HOCKEYAPP_TOKEN -a "$appName" | cut -d '"' -f 2)
-	if [ "n$hockeyToken" = "n" ]; then
-		echo "Missing token for upload!!!"
-		exit 1
-	fi
+  hockeyToken=$(security 2>&1 >/dev/null find-internet-password -gs HOCKEYAPP_TOKEN -a "$appName" | cut -d '"' -f 2)
+  if [ "n$hockeyToken" = "n" ]; then
+    echo "Missing token for upload!!!"
+    exit 1
+  fi
 
-	dryrunp curl -H "X-HockeyAppToken: $hockeyToken" \
-		-F status=2 \
-		-F notify=1 \
-		-F "notes=@$releasedNote" \
-		-F notes_type=1 \
-		-F repository_url=$gitRepo \
-		-F commit_sha=$gitSHA \
-		-F "ipa=@$ipa" \
-		-F "dsym=@$dsymZipped" \
-		https://rink.hockeyapp.net/api/2/apps/upload
+  dryrunp curl -H "X-HockeyAppToken: $hockeyToken" \
+    -F status=2 \
+    -F notify=1 \
+    -F "notes=@$releasedNote" \
+    -F notes_type=1 \
+    -F repository_url=$gitRepo \
+    -F commit_sha=$gitSHA \
+    -F "ipa=@$ipa" \
+    -F "dsym=@$dsymZipped" \
+    https://rink.hockeyapp.net/api/2/apps/upload
 
 fi
 
 # TestFlight upload
 if [ "n$uploadto" = "nTestFlight" ]; then
-	tfapitoken=$(security 2>&1 >/dev/null find-internet-password -gs TF_API_TOKEN -a "$appName" | cut -d '"' -f 2)
-	tfteamtoken=$(security 2>&1 >/dev/null find-internet-password -gs TF_TEAM_TOKEN -a "$appName" | cut -d '"' -f 2)
+  tfapitoken=$(security 2>&1 >/dev/null find-internet-password -gs TF_API_TOKEN -a "$appName" | cut -d '"' -f 2)
+  tfteamtoken=$(security 2>&1 >/dev/null find-internet-password -gs TF_TEAM_TOKEN -a "$appName" | cut -d '"' -f 2)
 
-	if [ "n$tfapitoken" = "n" -o "n$tfteamtoken" = "n" ]; then
-		echo "Missing tokens for upload!!!"
-		exit 1
-	fi
+  if [ "n$tfapitoken" = "n" -o "n$tfteamtoken" = "n" ]; then
+    echo "Missing tokens for upload!!!"
+    exit 1
+  fi
 
-	dryrunp curl http://testflightapp.com/api/builds.json \
-		-F "file=@$ipa" \
-		-F "dsym=@$dsymZipped" \
-		-F api_token=$tfapitoken \
-		-F team_token=$tfteamtoken \
-		-F "notes=@$releasedNote" \
-		-F notify=True 
-	
+  dryrunp curl http://testflightapp.com/api/builds.json \
+    -F "file=@$ipa" \
+    -F "dsym=@$dsymZipped" \
+    -F api_token=$tfapitoken \
+    -F team_token=$tfteamtoken \
+    -F "notes=@$releasedNote" \
+    -F notify=True 
+  
 fi
 
 
 ### Cleanup
 rm -rf $td
 
-# vim: set sw=4 ts=4 :
+# vim: set sw=2 ts=2 et :
