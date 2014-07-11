@@ -1,21 +1,83 @@
 #!/bin/bash
 
-# releaser [?]
+# releaser [options]
+#
+# Options:
+#  -h       Help Text
+#  -n       Dry run.
+#  -t       Just run tests
+#  -U       No upload
+#  -X       Do not delete temp dir
+
 set -e
 #set -x
 
-echo ""
-
 dry=no
+onlytest=no
+upload=yes
+cleanup=yes
+
+while getopts ":ntUXh" opt; do
+  case "$opt" in
+    n)
+      dry=yes
+      ;;
+    t)
+      onlytest=yes
+      ;;
+    U)
+      upload=no
+      ;;
+    X)
+      cleanup=no
+      ;;
+    h)
+      cat <<EOF
+releaser [options]
+
+Options:
+ -h       Help Text
+ -n       Dry run.
+ -t       Just run tests
+ -U       No upload
+ -X       Do not delete temp dir
+EOF
+      exit 2
+      ;;
+
+    \?)
+      echo "Invalid option: -$OPTARG" >&2
+      exit 1
+      ;;
+    :)
+      echo "Option -$OPTARG requires an argument." >&2
+      exit 1
+      ;;
+  esac
+done
+shift $((OPTIND-1))
+
+echo ""
+exit 4
+
 dryrunp() {
 	echo -e "\033[1m=>\033[0m $@"
-	if [ "n$dry" != "n" ]; then
+	if [ "n$dry" != "nyes" ]; then
 		"$@"
 	fi
 }
 
 td=$(mktemp -d ${TMPDIR}releaser.XXXXXX)
 echo -e "\033[1m=:\033[0m $td"
+
+cleanupdir() {
+  if [ "n$cleanup" = "nyes" ]; then
+    echo -e "\033[1m=>\033[0m Cleaning up."
+    rm -rf $td
+  else
+    echo -e "\033[1m=>\033[0m No clean; Dir: $td"
+  fi
+}
 
 # get project info.
 workspace=$(find . -depth 1 -name '*.xcworkspace')
@@ -26,6 +88,9 @@ if (grep -q HockeySDK Podfile); then
   uploadto=HockeyApp
 elif (grep -q TestFlightSDK Podfile); then
   uploadto=TestFlight
+fi
+if [ "n$upload" = "nno" ];then
+  uploadto=skip
 fi
 releaseNotes=$(dirname "$workspace")/ReleaseNotes.markdown
 
@@ -48,6 +113,11 @@ echo -e "\033[1m=]\033[0m Will release version $shortVersion"
 
 ### Run Unit Tests
 dryrunp xctool -workspace "$workspace" -scheme "$scheme" -sdk iphonesimulator7.1 test
+
+if [ "n$onlytest" = "nyes" ]; then
+  cleanupdir
+  exit
+fi
 
 ### Build the Archive
 dryrunp xctool -workspace "$workspace" -scheme "$scheme" archive
@@ -111,7 +181,8 @@ if [ "n$uploadto" = "nHockeyApp" ]; then
     echo "Missing token for upload!!!"
     exit 1
   fi
-
+  
+  # FIXME: Release notes are not getting uploaded.
   dryrunp curl -H "X-HockeyAppToken: $hockeyToken" \
     -F status=2 \
     -F notify=1 \
@@ -121,6 +192,7 @@ if [ "n$uploadto" = "nHockeyApp" ]; then
     -F commit_sha=$gitSHA \
     -F "ipa=@$ipa" \
     -F "dsym=@$dsymZipped" \
+    -o $td/uploadResults.json \
     https://rink.hockeyapp.net/api/2/apps/upload
 
 fi
@@ -141,7 +213,8 @@ if [ "n$uploadto" = "nTestFlight" ]; then
     -F api_token=$tfapitoken \
     -F team_token=$tfteamtoken \
     -F "notes=@$releasedNote" \
-    -F notify=True 
+    -F notify=True \
+    -o $td/uploadResults.json
   
 fi
 
@@ -151,6 +224,6 @@ if [ "n$uploadto" = "nnone" ]; then
 fi
 
 ### Cleanup
-rm -rf $td
+cleanupdir
 
 # vim: set sw=2 ts=2 et :
