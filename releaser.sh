@@ -140,7 +140,15 @@ gitRepo=$(git remote -v | head -1 | awk '{print $2}')
 gitSHA=$(git show-ref heads/master | head -1 | awk '{print $1}')
 
 # For Jira Kanban for this project, Release
-# TODO: how to script this?
+# In Jira, create and release this version.
+# Attaching all resolved, but unversioned issues to this version
+project=EXOIOS
+# FIXME: Won't set fixVersions on issues, but creates and releases Version just fine.
+cat >>$td/jira.cli <<EOF
+--action runFromIssueList --search "project = '$project' and status = 'Resolved' and fixVersion = EMPTY" --common "--action updateIssue --issue @issue@ --fixVersions ""$version"" --autoVersion --append" 
+--action releaseVersion --project "$project" --name "$version"
+EOF
+# jira --server "" --user "" --password "" --action run --file "$td/jira.cli"
 
 
 ### Build up the .ipa and dSYM.zip
@@ -182,7 +190,8 @@ if [ "n$uploadto" = "nHockeyApp" ]; then
   fi
   
   # FIXME: Release notes are not getting uploaded.
-  dryrunp curl -H "X-HockeyAppToken: $hockeyToken" \
+  # I think I need to read teh file and URL encode it and inline it. (ew)
+  dryrunp curl -v -H "X-HockeyAppToken: $hockeyToken" \
     -F status=2 \
     -F notify=1 \
     -F "notes=@$releasedNote" \
