@@ -58,7 +58,6 @@ done
 shift $((OPTIND-1))
 
 echo ""
-exit 4
 
 dryrunp() {
 	echo -e "\033[1m=>\033[0m $@"
