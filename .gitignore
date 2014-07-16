@@ -3,6 +3,7 @@
 .LSOverride
 Icon
 *.sw[a-z]
+cookies
 
 xcuserdata
 xcshareddata
