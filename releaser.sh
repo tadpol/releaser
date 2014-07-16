@@ -6,30 +6,37 @@
 #  -h       Help Text
 #  -n       Dry run.
 #  -t       Just run tests
-#  -U       No upload
 #  -X       Do not delete temp dir
 
 set -e
 #set -x
 
+########################################
+# Set the default stages to run.
+#stages="Setup AskVersion Test Archive UpdateReleaseNotes Commit Jira IPAandDSYM TrimReleaseNotes HockeyApp TestFlight CopyToDownloads"
+stages="Setup AskVersion Test Archive UpdateReleaseNotes Commit IPAandDSYM TrimReleaseNotes Upload"
+
+
 dry=no
-onlytest=no
-upload=yes
 cleanup=yes
 
-while getopts ":ntUXh" opt; do
+while getopts ":ntXhS:s:" opt; do
   case "$opt" in
     n)
       dry=yes
       ;;
     t)
-      onlytest=yes
-      ;;
-    U)
-      upload=no
+      stages="Setup AskVersion Test"
       ;;
     X)
       cleanup=no
+      ;;
+    S)
+      # remove stage.
+      ;;
+    s)
+      # add stage
+      stages="$stages $OPTARG"
       ;;
     h)
       cat <<EOF
@@ -39,7 +46,6 @@ Options:
  -h       Help Text
  -n       Dry run.
  -t       Just run tests
- -U       No upload
  -X       Do not delete temp dir
 EOF
       exit 2
@@ -59,11 +65,24 @@ shift $((OPTIND-1))
 
 echo ""
 
+#################################################
 dryrunp() {
 	echo -e "\033[1m=>\033[0m $@"
 	if [ "n$dry" != "nyes" ]; then
 		"$@"
 	fi
+}
+
+#################################################
+checkStage() {
+  echo -en "\033[1m=) Stage:\033[0m $1 "
+  if [[ $stages =~ (^|[[:space:]])"$1"($|[[:space:]]) ]]; then
+    echo -e "\033[1mRUN\033[0m"
+    return 0
+  else
+    echo -e "\033[1mSKIP\033[0m"
+    return 1
+  fi
 }
 
 #################################################
@@ -80,9 +99,11 @@ printVariables() {
 }
 
 
+#################################################
 td=$(mktemp -d ${TMPDIR}releaser.XXXXXX)
 printVariables TmpDir "$td"
 
+#################################################
 cleanupdir() {
   if [ "n$cleanup" = "nyes" ]; then
     echo -e "\033[1m=>\033[0m Cleaning up."
@@ -97,17 +118,15 @@ cleanupdir() {
 # Needs:
 # Returns: workspace, target, scheme, uploadto, infoFile, releaseNotes
 
+checkStage Setup
 workspace=$(find . -depth 1 -name '*.xcworkspace')
 target=$(basename -s .xcworkspace "$workspace")
 infoFile=$(find . -name "$target-Info.plist")
-uploadto=none
+uploadto=copy
 if (grep -q HockeySDK Podfile); then
   uploadto=HockeyApp
 elif (grep -q TestFlightSDK Podfile); then
   uploadto=TestFlight
-fi
-if [ "n$upload" = "nno" ];then
-  uploadto=skip
 fi
 releaseNotes=$(dirname "$workspace")/ReleaseNotes.markdown
 
@@ -115,8 +134,9 @@ releaseNotes=$(dirname "$workspace")/ReleaseNotes.markdown
 scheme=$target
 
 printVariables Workspace "$workspace" Target "$target" Scheme "$scheme"
-printVariables BetaDist "$uploadto"
+printVariables BetaDist "$uploadto" "Jira Project" "$project"
 printVariables InfoFile "$infoFile" "Release Notes" "$releaseNotes"
+printVariables Stages "$stages"
 
 ###################################################################################################
 ### Get the version for the release.
@@ -124,32 +144,33 @@ printVariables InfoFile "$infoFile" "Release Notes" "$releaseNotes"
 # Returns: shortVersion
 
 shortVersion=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$infoFile")
-# Ask if this is the right version, if not let them change it.
-echo -ne "\033[1m=)\033[0m Enter the version you want to release ($shortVersion) "
-read preferredVersion
-if [ "n$preferredVersion" != "n" ]; then
-  shortVersion=$preferredVersion
-  dryrunp /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $preferredVersion" "$infoFile"
+if checkStage AskVersion; then
+  # Ask if this is the right version, if not let them change it.
+  echo -ne "\033[1m=?\033[0m Enter the version you want to release ($shortVersion) "
+  read preferredVersion
+  if [ "n$preferredVersion" != "n" ]; then
+    shortVersion=$preferredVersion
+    dryrunp /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $preferredVersion" "$infoFile"
+  fi
 fi
 printVariables "Will release version" "$shortVersion"
-exit 4
+
 ###################################################################################################
 ### Run Unit Tests
 # Needs: workspace, scheme
-dryrunp xctool -workspace "$workspace" -scheme "$scheme" -sdk iphonesimulator7.1 test
-
-if [ "n$onlytest" = "nyes" ]; then
-  cleanupdir
-  exit
+if checkStage Test; then
+  dryrunp xctool -workspace "$workspace" -scheme "$scheme" -sdk iphonesimulator7.1 test
 fi
 
 ###################################################################################################
 ### Build the Archive
 # Needs: workspace, scheme, infoFile
 # Returns: version
-dryrunp xctool -workspace "$workspace" -scheme "$scheme" archive
+if checkStage Archive; then
+  dryrunp xctool -workspace "$workspace" -scheme "$scheme" archive
+fi
 
-# Cannot get build number until after we do the build.
+# Cannot get the correct build number until after we do the build.
 buildnumber=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$infoFile")
 version=v${shortVersion}-$buildnumber
 
@@ -158,29 +179,38 @@ printVariables Version "$version"
 ###################################################################################################
 ### Update Release Notes
 # Needs: td, releaseNotes
-relnTmp=$td/releasenotes.markdown
-datestamp=$(date '+%d %b %Y')
-cat "$releaseNotes" | sed -e "s/^##\$/## $datestamp/" -e "s/^###\$/### $version/" > "$relnTmp"
-mv "$relnTmp" "$releaseNotes"
+if checkStage UpdateReleaseNotes; then
+  relnTmp=$td/releasenotes.markdown
+  datestamp=$(date '+%d %b %Y')
+  cat "$releaseNotes" | sed -e "s/^##\$/## $datestamp/" -e "s/^###\$/### $version/" > "$relnTmp"
+  mv "$relnTmp" "$releaseNotes"
+fi
 
 ###################################################################################################
 ### Commit this all and Tag the release.
 # Needs: version
 # Returns: gitRepo, gitSHA
-dryrunp git commit -a -m "Release $version"
-dryrunp git tag $version -m "Release $version"
-dryrunp git push
+if checkStage Commit; then
+  dryrunp git commit -a -m "Release $version"
+  dryrunp git tag $version -m "Release $version"
+  dryrunp git push
 
-# Grab some stuff for hockey app.
-gitRepo=$(git remote -v | head -1 | awk '{print $2}')
-gitSHA=$(git show-ref heads/master | head -1 | awk '{print $1}')
-
+  # Grab some stuff for hockey app.
+  gitRepo=$(git remote -v | head -1 | awk '{print $2}')
+  gitSHA=$(git show-ref heads/master | head -1 | awk '{print $1}')
+else
+  gitRepo=
+  gitSHA=
+fi
 printVariables Repo "$gitRepo" SHA "$gitSHA"
 
 ###################################################################################################
 ### In Jira, create and release this version.
 ### Attaching all resolved, but unversioned issues to this version
 # Needs: project, version
+if checkStage Jira; then
+  echo nothing yet.
+fi
 
 
 ###################################################################################################
@@ -188,21 +218,26 @@ printVariables Repo "$gitRepo" SHA "$gitSHA"
 # Needs: td, target
 # Returns: appName, ipa, dsymZipped
 
-#archivePath=$(find ~/Library/Developer/Xcode/Archives -type d -Btime -60m -name '*.xcarchive' | head -1)
-archivePath=$(find ~/Library/Developer/Xcode/Archives -type d -name "$target*.xcarchive" | tail -1)
-#echo -e "\033[1m=:\033[0m archivePath=$archivePath"
-appPath=$(/usr/libexec/PlistBuddy -c "Print :ApplicationProperties:ApplicationPath" "$archivePath/Info.plist" )
-#appName=$(/usr/libexec/PlistBuddy -c "Print :Name" "$archivePath/Info.plist" )
-appName=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$archivePath/Products/$appPath/Info.plist")
-echo -e "\033[1m=:\033[0m appName=$appName  appPath=$appPath"
+if checkStage IPAandDSYM; then
+  #archivePath=$(find ~/Library/Developer/Xcode/Archives -type d -Btime -60m -name '*.xcarchive' | head -1)
+  archivePath=$(find ~/Library/Developer/Xcode/Archives -type d -name "$target*.xcarchive" | tail -1)
+  #echo -e "\033[1m=:\033[0m archivePath=$archivePath"
+  appPath=$(/usr/libexec/PlistBuddy -c "Print :ApplicationProperties:ApplicationPath" "$archivePath/Info.plist" )
+  #appName=$(/usr/libexec/PlistBuddy -c "Print :Name" "$archivePath/Info.plist" )
+  appName=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$archivePath/Products/$appPath/Info.plist")
+  echo -e "\033[1m=:\033[0m appName=$appName  appPath=$appPath"
 
-ipa=$td/${appName}.ipa
-dryrunp xcrun -sdk iphoneos PackageApplication "$archivePath/Products/$appPath" -o "$ipa"
+  ipa=$td/${appName}.ipa
+  dryrunp xcrun -sdk iphoneos PackageApplication "$archivePath/Products/$appPath" -o "$ipa"
 
-dsymPath=$archivePath/dSYMs/${appName}.app.dSYM
-dsymZipped=$td/${appName}.app.dSYM.zip
-dryrunp zip -q -r -9 "$dsymZipped" "$dsymPath"
-
+  dsymPath=$archivePath/dSYMs/${appName}.app.dSYM
+  dsymZipped=$td/${appName}.app.dSYM.zip
+  dryrunp zip -q -r -9 "$dsymZipped" "$dsymPath"
+else
+  appName=
+  ipa=
+  dsymZipped=
+fi
 printVariables AppName "$appName"
 printVariables IPA "$ipa"
 printVariables DSYM "$dsymZipped"
@@ -211,76 +246,83 @@ printVariables DSYM "$dsymZipped"
 ### Trim to just the current release note section
 # Needs: td, releaseNotes
 # Returns: releasedNote
-releasedNote=$td/ReleasedNote.markdown
-awk '
-BEGIN { off=0 }
-off==0 {}
-off==0 && /^## / {
-  off=1
-  print
-  next
-}
-off==1 && /^## / { exit }
-off==1 { print }
-' "$releaseNotes" > "$releasedNote"
-
+if checkStage TrimReleaseNotes; then
+  releasedNote=$td/ReleasedNote.markdown
+  awk '
+  BEGIN { off=0 }
+  off==0 {}
+  off==0 && /^## / {
+    off=1
+    print
+    next
+  }
+  off==1 && /^## / { exit }
+  off==1 { print }
+  ' "$releaseNotes" > "$releasedNote"
+else
+  releasedNote="$releaseNotes"
+fi
 printVariables "Release Snippet" "$releasedNote"
 
 ###################################################################################################
-### HockeyApp Upload
-# Needs: appName, ipa, dsymZipped, releaseNote, td, gitRepo, gitSHA
-if [ "n$uploadto" = "nHockeyApp" ]; then
+if checkStage Upload; then
+  ##################################################################################################
+  ### HockeyApp Upload
+  # Needs: appName, ipa, dsymZipped, releaseNote, td, gitRepo, gitSHA
+  if [ "n$uploadto" = "nHockeyApp" ]; then
 
-  hockeyToken=$(security 2>&1 >/dev/null find-internet-password -gs HOCKEYAPP_TOKEN -a "$appName" | cut -d '"' -f 2)
-  if [ "n$hockeyToken" = "n" ]; then
-    echo "Missing token for upload!!!"
-    exit 1
+    hockeyToken=$(security 2>&1 >/dev/null find-internet-password -gs HOCKEYAPP_TOKEN -a "$appName" | cut -d '"' -f 2)
+    if [ "n$hockeyToken" = "n" ]; then
+      echo "Missing token for upload!!!"
+      exit 1
+    fi
+
+    # FIXME: Release notes are not getting uploaded.
+    # I think I need to read the file and URL encode it and inline it. (ew)
+    dryrunp curl -v -H "X-HockeyAppToken: $hockeyToken" \
+      -F status=2 \
+      -F notify=1 \
+      -F "notes=@$releasedNote" \
+      -F notes_type=1 \
+      -F repository_url=$gitRepo \
+      -F commit_sha=$gitSHA \
+      -F "ipa=@$ipa" \
+      -F "dsym=@$dsymZipped" \
+      -o $td/uploadResults.json \
+      https://rink.hockeyapp.net/api/2/apps/upload
+
   fi
 
-  # FIXME: Release notes are not getting uploaded.
-  # I think I need to read the file and URL encode it and inline it. (ew)
-  dryrunp curl -v -H "X-HockeyAppToken: $hockeyToken" \
-    -F status=2 \
-    -F notify=1 \
-    -F "notes=@$releasedNote" \
-    -F notes_type=1 \
-    -F repository_url=$gitRepo \
-    -F commit_sha=$gitSHA \
-    -F "ipa=@$ipa" \
-    -F "dsym=@$dsymZipped" \
-    -o $td/uploadResults.json \
-    https://rink.hockeyapp.net/api/2/apps/upload
+  ##################################################################################################
+  ### TestFlight Upload
+  # Needs: appName, ipa, dsymZipped, releaseNote, td
+  if [ "n$uploadto" = "nTestFlight" ]; then
+    tfapitoken=$(security 2>&1 >/dev/null find-internet-password -gs TF_API_TOKEN -a "$appName" | cut -d '"' -f 2)
+    tfteamtoken=$(security 2>&1 >/dev/null find-internet-password -gs TF_TEAM_TOKEN -a "$appName" | cut -d '"' -f 2)
 
-fi
+    if [ "n$tfapitoken" = "n" -o "n$tfteamtoken" = "n" ]; then
+      echo "Missing tokens for upload!!!"
+      exit 1
+    fi
 
-###################################################################################################
-### TestFlight Upload
-# Needs: appName, ipa, dsymZipped, releaseNote, td
-if [ "n$uploadto" = "nTestFlight" ]; then
-  tfapitoken=$(security 2>&1 >/dev/null find-internet-password -gs TF_API_TOKEN -a "$appName" | cut -d '"' -f 2)
-  tfteamtoken=$(security 2>&1 >/dev/null find-internet-password -gs TF_TEAM_TOKEN -a "$appName" | cut -d '"' -f 2)
-
-  if [ "n$tfapitoken" = "n" -o "n$tfteamtoken" = "n" ]; then
-    echo "Missing tokens for upload!!!"
-    exit 1
+    dryrunp curl http://testflightapp.com/api/builds.json \
+      -F "file=@$ipa" \
+      -F "dsym=@$dsymZipped" \
+      -F api_token=$tfapitoken \
+      -F team_token=$tfteamtoken \
+      -F "notes=@$releasedNote" \
+      -F notify=True \
+      -o $td/uploadResults.json
+    
   fi
 
-  dryrunp curl http://testflightapp.com/api/builds.json \
-    -F "file=@$ipa" \
-    -F "dsym=@$dsymZipped" \
-    -F api_token=$tfapitoken \
-    -F team_token=$tfteamtoken \
-    -F "notes=@$releasedNote" \
-    -F notify=True \
-    -o $td/uploadResults.json
-  
-fi
+  ##################################################################################################
+  ### Just copy to Downloads
+  # Needs: ipa, dsymZipped
+  if [ "n$uploadto" = "ncopy" ]; then
+    mv "$dsymZipped" "$ipa" ~/Downloads/
+  fi
 
-###################################################################################################
-### Just copy to Downloads
-# Needs: ipa, dsymZipped
-if [ "n$uploadto" = "nnone" ]; then
-  mv "$dsymZipped" "$ipa" ~/Downloads/
 fi
 
 ###################################################################################################
