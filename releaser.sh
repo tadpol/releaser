@@ -14,7 +14,8 @@ set -e
 ########################################
 # Set the default stages to run.
 #stages="Setup AskVersion Test Archive UpdateReleaseNotes Commit Jira IPAandDSYM TrimReleaseNotes HockeyApp TestFlight CopyToDownloads"
-stages="Setup AskVersion Test Archive UpdateReleaseNotes Commit IPAandDSYM TrimReleaseNotes Upload"
+#stages="Setup AskVersion Test Archive UpdateReleaseNotes Commit IPAandDSYM TrimReleaseNotes Upload"
+stages="Setup AskVersion Archive UpdateReleaseNotes Commit TrimReleaseNotes Upload"
 
 
 dry=no
@@ -127,6 +128,7 @@ if (grep -q HockeySDK Podfile); then
   uploadto=HockeyApp
 elif (grep -q TestFlightSDK Podfile); then
   uploadto=TestFlight
+  stages="$stages IPAandDSYM"
 fi
 releaseNotes=$(dirname "$workspace")/ReleaseNotes.markdown
 
@@ -216,11 +218,13 @@ fi
 ###################################################################################################
 ### Build up the .ipa and dSYM.zip
 # Needs: td, target
-# Returns: appName, ipa, dsymZipped
+# Returns: archivePath, appName, ipa, dsymZipped
+
+#archivePath=$(find ~/Library/Developer/Xcode/Archives -type d -Btime -60m -name '*.xcarchive' | head -1)
+archivePath=$(find ~/Library/Developer/Xcode/Archives -type d -name "$target*.xcarchive" | tail -1)
+printVariables archivePath "$archivePath"
 
 if checkStage IPAandDSYM; then
-  #archivePath=$(find ~/Library/Developer/Xcode/Archives -type d -Btime -60m -name '*.xcarchive' | head -1)
-  archivePath=$(find ~/Library/Developer/Xcode/Archives -type d -name "$target*.xcarchive" | tail -1)
   #echo -e "\033[1m=:\033[0m archivePath=$archivePath"
   appPath=$(/usr/libexec/PlistBuddy -c "Print :ApplicationProperties:ApplicationPath" "$archivePath/Info.plist" )
   #appName=$(/usr/libexec/PlistBuddy -c "Print :Name" "$archivePath/Info.plist" )
@@ -268,35 +272,37 @@ printVariables "Release Snippet" "$releasedNote"
 if checkStage Upload; then
   ##################################################################################################
   ### HockeyApp Upload
-  # Needs: appName, ipa, dsymZipped, releaseNote, td, gitRepo, gitSHA
+  # Needs: archivePath, releaseNote, td, gitRepo, gitSHA
   if [ "n$uploadto" = "nHockeyApp" ]; then
 
-    hockeyToken=$(security 2>&1 >/dev/null find-internet-password -gs HOCKEYAPP_TOKEN -a "$appName" | cut -d '"' -f 2)
+    hockeyToken=$(security 2>&1 >/dev/null find-internet-password -gs HOCKEYAPP_TOKEN | cut -d '"' -f 2)
     if [ "n$hockeyToken" = "n" ]; then
       echo "Missing token for upload!!!"
       exit 1
     fi
 
-    # FIXME: Release notes are not getting uploaded.
-    # I think I need to read the file and URL encode it and inline it. (ew)
-    dryrunp curl -v -H "X-HockeyAppToken: $hockeyToken" \
-      -F status=2 \
-      -F notify=1 \
-      -F "notes=@$releasedNote" \
-      -F notes_type=1 \
-      -F repository_url=$gitRepo \
-      -F commit_sha=$gitSHA \
-      -F "ipa=@$ipa" \
-      -F "dsym=@$dsymZipped" \
-      -o $td/uploadResults.json \
-      https://rink.hockeyapp.net/api/2/apps/upload
+    dryrunp puck "-repository_url=$gitRepo" \
+      -commit_sha=$gitSHA \
+      -notes_type=markdown \
+      "-notes_path=$releasedNote" \
+      -upload=all \
+      -submit=manual \
+      -download=true \
+      -open=notify \
+      -api_token=$hockeyToken \
+      "$archivePath"
 
+    # gotta wait a little otherwise we clean up before everything gets loaded.
+    # puck still launches the full HockeyApp UI.  So we might want to consider moving
+    # back to the curl method.
+    sleep 10
   fi
 
   ##################################################################################################
   ### TestFlight Upload
   # Needs: appName, ipa, dsymZipped, releaseNote, td
   if [ "n$uploadto" = "nTestFlight" ]; then
+    # FIXME: If security cannot fins the key, this does not fail the script.
     tfapitoken=$(security 2>&1 >/dev/null find-internet-password -gs TF_API_TOKEN -a "$appName" | cut -d '"' -f 2)
     tfteamtoken=$(security 2>&1 >/dev/null find-internet-password -gs TF_TEAM_TOKEN -a "$appName" | cut -d '"' -f 2)
 
@@ -308,8 +314,8 @@ if checkStage Upload; then
     dryrunp curl http://testflightapp.com/api/builds.json \
       -F "file=@$ipa" \
       -F "dsym=@$dsymZipped" \
-      -F api_token=$tfapitoken \
-      -F team_token=$tfteamtoken \
+      -F "api_token=$tfapitoken" \
+      -F "team_token=$tfteamtoken" \
       -F "notes=@$releasedNote" \
       -F notify=True \
       -o $td/uploadResults.json
