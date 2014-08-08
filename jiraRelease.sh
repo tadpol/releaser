@@ -3,10 +3,63 @@
 set -e
 set -x
 
+project=
+userpass=
+jiraURLBase=
+if [ -e ".jiraProject" ];then
+	read project userpass jiraURLBase < .jiraProject
+fi
+
+while getopts ":p:u:U:" opt; do
+  case "$opt" in
+    p)
+	  project=$OPTARG
+      ;;
+    u)
+	  userpass=$OPTARG
+      ;;
+    U)
+	  jiraURLBase=$OPTARG
+      ;;
+    h)
+      cat <<EOF
+jiraRelease [options] <version>
+
+Options:
+ -h              Help Text
+ -p <project>    Set project
+ -u <username>   Set Username
+ -U <url>        Set Jira URL
+
+EOF
+      exit 2
+      ;;
+
+    \?)
+      echo "Invalid option: -$OPTARG" >&2
+      exit 1
+      ;;
+    :)
+      echo "Option -$OPTARG requires an argument." >&2
+      exit 1
+      ;;
+  esac
+done
+shift $((OPTIND-1))
 version="${1:?Version Missing}"
-project="${2:?Project Missing}"
-userpass="${3:?User missing}"
-jiraURLBase="${4:?URL Missing}"
+
+if [ "u$project" = "u" ]; then
+	echo Missing project
+	exit 1
+fi
+if [ "u$userpass" = "u" ]; then
+	echo Missing Username
+	exit 1
+fi
+if [ "u$jiraURLBase" = "u" ]; then
+	echo Missing Jira URL
+	exit 1
+fi
 
 cookieJar=$(mktemp -t cookies) || exit 1
 jiraURL1="${jiraURLBase}/rest/api/1"

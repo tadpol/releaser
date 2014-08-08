@@ -4,6 +4,7 @@
 Icon
 *.sw[a-z]
 cookies
+.jiraProject
 
 xcuserdata
 xcshareddata
