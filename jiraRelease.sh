@@ -1,12 +1,27 @@
 #!/bin/bash
 
 set -e
-set -x
+
+#################################################
+printVariables() {
+  echo -en "\033[1m=:\033[0m "
+  while [ $# -gt 1 ]; do
+    echo -en "\033[1m$1:\033[0m $2  "
+    shift 2
+  done
+  if [ $# -gt 0 ]; then
+    echo -en "\033[1m$1:\033[0m"
+  fi
+  echo ""
+}
+
+#################################################
 
 project=
 userpass=
 jiraURLBase=
 if [ -e ".jiraProject" ];then
+	#TODO Fix the format of this.
 	read project userpass jiraURLBase < .jiraProject
 fi
 
@@ -61,16 +76,20 @@ if [ "u$jiraURLBase" = "u" ]; then
 	exit 1
 fi
 
+printVariables project $project userpass $userpass url $jiraURLBase
+
 cookieJar=$(mktemp -t cookies) || exit 1
 jiraURL1="${jiraURLBase}/rest/api/1"
 jiraURL="${jiraURLBase}/rest/api/2"
 
 # TODO: Fetch User:pass from KeyChain
 
+set -x
 # Log in
 curl -c $cookieJar -H "Content-Type: application/json" -X POST \
 	--user "$userpass" \
 	${jiraURL1}/session
+# FIXME If login fails, STOP script.
 
 # Create New Version
 dateShort=$(date +%Y-%m-%d)
