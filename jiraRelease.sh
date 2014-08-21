@@ -88,7 +88,7 @@ set -x
 # Log in
 curl -c $cookieJar -H "Content-Type: application/json" -X POST \
 	--user "$userpass" \
-	${jiraURL1}/session
+	${jiraURL1}/session >/dev/null
 # FIXME If login fails, STOP script.
 
 # Create New Version
@@ -106,7 +106,7 @@ curl -b $cookieJar -s -H "Content-Type: application/json" -X POST \
 	${jiraURL}/version -d "$verReq"
 
 # Find all unreleased issues.
-query="project = $project AND status = Resolved AND fixVersion = EMPTY"
+query="project = $project AND (status = Resolved OR status = Closed) AND fixVersion = EMPTY"
 issueReq=$(jq -n -c -M --arg query "$query" '{"jql": $query, "fields": ["key"]}')
 issues=$(curl -b $cookieJar -s -X POST -H "Content-Type: application/json" \
 	${jiraURL}/search \
@@ -125,7 +125,7 @@ for issue in $issues; do
 done
 
 # Log out
-curl -b $cookieJar -H "Content-Type: application/json" -X DELETE ${jiraURL1}/session
+curl -b $cookieJar -H "Content-Type: application/json" -X DELETE ${jiraURL1}/session >/dev/null
 rm -f $cookieJar
 
 #  vim: set sw=4 ts=4 :
