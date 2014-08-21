@@ -105,6 +105,8 @@ verReq=$(jq -n -c -M --arg dateShort "$dateShort" \
 curl -b $cookieJar -s -H "Content-Type: application/json" -X POST \
 	${jiraURL}/version -d "$verReq"
 
+# TODO: Transition Issues in Resolved status to Closed.
+
 # Find all unreleased issues.
 query="project = $project AND (status = Resolved OR status = Closed) AND fixVersion = EMPTY"
 issueReq=$(jq -n -c -M --arg query "$query" '{"jql": $query, "fields": ["key"]}')
