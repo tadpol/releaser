@@ -86,7 +86,7 @@ jiraURL="${jiraURLBase}/rest/api/2"
 
 set -x
 # Log in
-curl -c $cookieJar -H "Content-Type: application/json" -X POST \
+curl -s -c $cookieJar -H "Content-Type: application/json" -X POST \
 	--user "$userpass" \
 	${jiraURL1}/session >/dev/null
 # FIXME If login fails, STOP script.
@@ -127,7 +127,7 @@ for issue in $issues; do
 done
 
 # Log out
-curl -b $cookieJar -H "Content-Type: application/json" -X DELETE ${jiraURL1}/session >/dev/null
+curl -s -b $cookieJar -H "Content-Type: application/json" -X DELETE ${jiraURL1}/session >/dev/null
 rm -f $cookieJar
 
 #  vim: set sw=4 ts=4 :
