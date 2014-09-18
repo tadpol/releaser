@@ -3,6 +3,7 @@
 require 'uri'
 require 'net/http'
 require 'json'
+require 'date'
 
 project=''
 userpass=''
@@ -15,6 +16,9 @@ if File.exist?('.jiraProject')
 		userpass = opts[1]
 		jiraURLBase = opts[2]
 	}
+else
+	puts 'Missing config file.'
+	exit 1
 end
 
 
@@ -33,7 +37,7 @@ printVars({:project=>project,
 		   :version=>version,
 		   :jiraURLBase=>jiraURLBase})
 
-# TODO If password is empty, ask for it.
+# If password is empty, ask for it.
 if userpass.include? ':'
 	@username, @password = userpass.split(':')
 else
@@ -64,9 +68,19 @@ Net::HTTP.start(@rest2.host, @rest2.port, :use_ssl=>true) do |http|
 	response = http.request(request)
 	case response
 	when Net::HTTPSuccess
+		vers = JSON.parse(response.body)
+		if !vers['released']
+			# Sometimes setting released on create doesn't work.
+			# So modify it.
+			request = Net::HTTP::Put.new(@rest2 + ('version/' + vers['id'])) 
+			request.content_type = 'application/json'
+			request.basic_auth(@username, @password)
+			request.body = JSON.generate({ 'released' => true })
+			response = http.request(request)
 
+		end
 	else
-		puts "failed because"
+		puts "failed on version creation because #{response}"
 		exit 1
 	end
 
