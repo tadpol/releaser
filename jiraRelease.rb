@@ -42,13 +42,11 @@ if userpass.include? ':'
 	@username, @password = userpass.split(':')
 else
 	@username = userpass
-	#password = 
-
 	# if darwin
-	
 	@password = `security 2>&1 >/dev/null find-internet-password -gs "#{jiraURLBase}" -a "#{@username}"`
-    @password[/^password: "(.*)"$/, 1]
+    @password.sub!(/^password: "(.*)"$/, '\1')
 end
+#printVars({:us=>@username,:ps=>@password})
 
 @rest2 = URI(jiraURLBase + '/rest/api/2/')
 
