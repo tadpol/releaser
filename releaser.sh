@@ -123,6 +123,9 @@ checkStage Setup
 workspace=$(find . -depth 1 -name '*.xcworkspace')
 target=$(basename -s .xcworkspace "$workspace")
 infoFile=$(find . -name "$target-Info.plist")
+if [ -z "$infoFile" -a -f "$target/Info.plist" ]; then
+infoFile="$target/Info.plist"
+fi
 uploadto=copy
 if (grep -q HockeySDK Podfile); then
   uploadto=HockeyApp
