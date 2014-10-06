@@ -176,6 +176,7 @@ if checkStage Archive; then
 fi
 
 # Cannot get the correct build number until after we do the build.
+# TODO: Remove this from the post build script project stage, and put in here up above.
 buildnumber=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$infoFile")
 version=v${shortVersion}-$buildnumber
 
@@ -208,6 +209,20 @@ else
   gitSHA=
 fi
 printVariables Repo "$gitRepo" SHA "$gitSHA"
+
+###################################################################################################
+### Ready for next version.
+### 
+# Needs: buldNumber, infoFile, td, releaseNotes
+if checkStage ReadNextRelease; then
+  relnTmp=$td/releasenotes.markdown
+  cat "$releaseNotes" | sed -e '3i\
+##
+###
+' > "$relnTmp"
+  mv "$relnTmp" "$releaseNotes"
+  dryrunp /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $((buildNumber + 1))" "$infoFile"
+fi
 
 ###################################################################################################
 ### In Jira, create and release this version.
