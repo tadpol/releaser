@@ -37,7 +37,10 @@ else
 	tag = `git for-each-ref --sort=taggerdate --format '%(refname)' refs/tags | tail -1`.chomp
 	version = tag.split('/').last
 
-	# TODO ask if ok, and let them type a different one
+	# ask if ok, and let them type a different one
+	print "\033[1m=?\033[0m Enter the version you want to release (#{version}) "
+	newver = gets.chomp
+	version = newver unless newver == ''
 end
 
 printVars({:project=>project,
