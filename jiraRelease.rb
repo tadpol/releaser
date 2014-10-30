@@ -4,18 +4,18 @@ require 'uri'
 require 'net/http'
 require 'json'
 require 'date'
+require 'yaml'
 
 project=''
 userpass=''
 jiraURLBase=''
 if File.exist?('.jiraProject') 
-	File.open('.jiraProject', 'r') { |file|
-		lines = file.readlines
-		opts = lines[0].split(' ')
-		project = opts[0]
-		userpass = opts[1]
-		jiraURLBase = opts[2]
-	}
+	File.open('.jiraProject', 'r') do |file|
+		$cfg = YAML.load(file)
+		project = $cfg['project']
+		userpass = $cfg['userpass']
+		jiraURLBase = $cfg['jira']
+	end
 else
 	puts 'Missing config file.'
 	exit 1
@@ -35,7 +35,7 @@ version = ARGV[0]
 printVars({:project=>project,
 		   :userpass=>userpass,
 		   :version=>version,
-		   :jiraURLBase=>jiraURLBase})
+		   :jira=>jiraURLBase})
 
 # If password is empty, ask for it.
 if userpass.include? ':'
