@@ -124,46 +124,48 @@ Net::HTTP.start(@rest2.host, @rest2.port, :use_ssl=>true) do |http|
 	end
 
 	### Transition to Closed
-	# We don't currently use the difference between Resolved and Closed.  So make all Closed.
-	query = "project = #{project} AND status = Resolved AND fixVersion != EMPTY" 
-	keys = getIssueKeys(http, query)
-	printVars({:Rkeys=>keys})
+	if $cfg.has_key?('alsoClose') and $cfg['alsoClose']
+		# We don't currently use the difference between Resolved and Closed.  So make all Closed.
+		query = "assignee = #{@username} AND project = #{project} AND status = Resolved AND fixVersion != EMPTY" 
+		keys = getIssueKeys(http, query)
+		printVars({:Rkeys=>keys})
 
-	if !keys.empty?
+		if !keys.empty?
 
-		# *sigh* Need to transition by ID, buts what's the ID? So look that up
-		request = Net::HTTP::Get.new(@rest2 + ('issue/' + keys.first + '/transitions'))
-		request.content_type = 'application/json'
-		request.basic_auth(@username, @password)
-		response = http.request(request)
-		case response
-		when Net::HTTPSuccess
-			trans = JSON.parse(response.body)
-			closed = trans['transitions'].select {|item| item['name'] == 'Closed' }
-		else
-			puts "failed because"
-			exit 1
-		end
-
-		if closed.empty?
-			puts "Cannot find Transition to Closed!!!!"
-			exit 2
-		end
-
-		printVars({:closedID=>closed[0]['id']})
-		
-		update = JSON.generate({'transition'=>{'id'=> closed[0]['id'] }})
-		keys.each do |key|
-			request = Net::HTTP::Post.new(@rest2 + ('issue/' + key + '/transitions'))
+			# *sigh* Need to transition by ID, buts what's the ID? So look that up
+			request = Net::HTTP::Get.new(@rest2 + ('issue/' + keys.first + '/transitions'))
 			request.content_type = 'application/json'
 			request.basic_auth(@username, @password)
-			request.body = update
-
 			response = http.request(request)
 			case response
 			when Net::HTTPSuccess
+				trans = JSON.parse(response.body)
+				closed = trans['transitions'].select {|item| item['name'] == 'Closed' }
 			else
-				puts "failed on #{key} because #{response}"
+				puts "failed because"
+				exit 1
+			end
+
+			if closed.empty?
+				puts "Cannot find Transition to Closed!!!!"
+				exit 2
+			end
+
+			printVars({:closedID=>closed[0]['id']})
+			
+			update = JSON.generate({'transition'=>{'id'=> closed[0]['id'] }})
+			keys.each do |key|
+				request = Net::HTTP::Post.new(@rest2 + ('issue/' + key + '/transitions'))
+				request.content_type = 'application/json'
+				request.basic_auth(@username, @password)
+				request.body = update
+
+				response = http.request(request)
+				case response
+				when Net::HTTPSuccess
+				else
+					puts "failed on #{key} because #{response}"
+				end
 			end
 		end
 	end
