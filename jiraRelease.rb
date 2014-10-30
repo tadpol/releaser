@@ -30,7 +30,15 @@ def printVars(map)
 	$stdout.print("\n")
 end
 
-version = ARGV[0]
+if ARGV.length > 0
+	version = ARGV[0]
+else
+	# try to guess
+	tag = `git for-each-ref --sort=taggerdate --format '%(refname)' refs/tags | tail -1`.chomp
+	version = tag.split('/').last
+
+	# TODO ask if ok, and let them type a different one
+end
 
 printVars({:project=>project,
 		   :userpass=>userpass,
