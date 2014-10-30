@@ -103,7 +103,7 @@ Net::HTTP.start(@rest2.host, @rest2.port, :use_ssl=>true) do |http|
 	end
 
 	### Find all unreleased issues
-	query ="project = #{project} AND (status = Resolved OR status = Closed) AND fixVersion = EMPTY" 
+	query ="assignee = #{@username} AND project = #{project} AND (status = Resolved OR status = Closed) AND fixVersion = EMPTY" 
 	keys = getIssueKeys(http, query)
 	printVars({:keys=>keys})
 
