@@ -5,6 +5,25 @@ require 'net/http'
 require 'json'
 require 'date'
 require 'yaml'
+require 'docopt'
+
+docs = <<DOCPOT
+Little tool for releasing a version in Jira.
+
+Usage: jiraRelease [options] [<version>]
+
+Options:
+  -h --help       This text
+  -n --dry        Don't make changes, just query for issues.
+  -v --verbose    Verbose
+DOCPOT
+
+begin
+  $args = Docopt::docopt(docs)
+rescue Docopt::Exit => e
+  puts e.message
+  exit 1
+end
 
 project=''
 userpass=''
@@ -30,8 +49,15 @@ def printVars(map)
 	$stdout.print("\n")
 end
 
-if ARGV.length > 0
-	version = ARGV[0]
+def verbose(msg)
+	return unless $args['--verbose']
+	$stdout.print("\033[1m=#\033[0m ")
+	$stdout.print(msg)
+	$stdout.print("\n")
+end
+
+if not $args['<version>'].nil?
+	version = $args['<version>']
 else
 	# try to guess
 	tag = `git for-each-ref --sort=taggerdate --format '%(refname)' refs/tags | tail -1`.chomp
@@ -39,7 +65,7 @@ else
 
 	# ask if ok, and let them type a different one
 	print "\033[1m=?\033[0m Enter the version you want to release (#{version}) "
-	newver = gets.chomp
+	newver = $stdin.gets.chomp
 	version = newver unless newver == ''
 end
 
@@ -74,23 +100,28 @@ Net::HTTP.start(@rest2.host, @rest2.port, :use_ssl=>true) do |http|
 		'project' => project,
 	})
 
-	response = http.request(request)
-	case response
-	when Net::HTTPSuccess
-		vers = JSON.parse(response.body)
-		if !vers['released']
-			# Sometimes setting released on create doesn't work.
-			# So modify it.
-			request = Net::HTTP::Put.new(@rest2 + ('version/' + vers['id'])) 
-			request.content_type = 'application/json'
-			request.basic_auth(@username, @password)
-			request.body = JSON.generate({ 'released' => true })
-			response = http.request(request)
+	verbose "Creating #{request.body}"
+	if not $args['--dry']
+		response = http.request(request)
+		case response
+		when Net::HTTPSuccess
+			vers = JSON.parse(response.body)
+			if !vers['released']
+				# Sometimes setting released on create doesn't work.
+				# So modify it.
+				request = Net::HTTP::Put.new(@rest2 + ('version/' + vers['id'])) 
+				request.content_type = 'application/json'
+				request.basic_auth(@username, @password)
+				request.body = JSON.generate({ 'released' => true })
+				response = http.request(request)
 
+			end
+		else
+			puts "failed on version creation because #{response}"
+			puts response.body
+			
+			exit 1
 		end
-	else
-		puts "failed on version creation because #{response}"
-		exit 1
 	end
 
 	def getIssueKeys(http, query)
@@ -102,6 +133,7 @@ Net::HTTP.start(@rest2.host, @rest2.port, :use_ssl=>true) do |http|
 			'fields' => [ "key" ]
 		})
 
+		verbose "Get keys: #{query}"
 		response = http.request(request)
 		case response
 		when Net::HTTPSuccess
@@ -126,17 +158,21 @@ Net::HTTP.start(@rest2.host, @rest2.port, :use_ssl=>true) do |http|
 		request.basic_auth(@username, @password)
 		request.body = update
 
-		response = http.request(request)
-		case response
-		when Net::HTTPSuccess
-		else
-			puts "failed on #{key} because #{response}"
+		verbose "Updating key #{key} with #{update}"
+		if not $args['--dry']
+			response = http.request(request)
+			case response
+			when Net::HTTPSuccess
+			else
+				puts "failed on #{key} because #{response}"
+			end
 		end
 	end
 
 	### Transition to Closed
 	if $cfg.has_key?('alsoClose') and $cfg['alsoClose']
-		# We don't currently use the difference between Resolved and Closed.  So make all Closed.
+		puts "Also closing." if $args['--verbose']
+
 		query = "assignee = #{@username} AND project = #{project} AND status = Resolved AND fixVersion != EMPTY" 
 		keys = getIssueKeys(http, query)
 		printVars({:Rkeys=>keys})
@@ -147,6 +183,7 @@ Net::HTTP.start(@rest2.host, @rest2.port, :use_ssl=>true) do |http|
 			request = Net::HTTP::Get.new(@rest2 + ('issue/' + keys.first + '/transitions'))
 			request.content_type = 'application/json'
 			request.basic_auth(@username, @password)
+			verbose "Fetching transition ID for Closed"
 			response = http.request(request)
 			case response
 			when Net::HTTPSuccess
@@ -171,11 +208,14 @@ Net::HTTP.start(@rest2.host, @rest2.port, :use_ssl=>true) do |http|
 				request.basic_auth(@username, @password)
 				request.body = update
 
-				response = http.request(request)
-				case response
-				when Net::HTTPSuccess
-				else
-					puts "failed on #{key} because #{response}"
+				verbose "Updating key #{key} with #{update}"
+				if not $args['--dry']
+					response = http.request(request)
+					case response
+					when Net::HTTPSuccess
+					else
+						puts "failed on #{key} because #{response}"
+					end
 				end
 			end
 		end
