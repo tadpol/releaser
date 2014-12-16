@@ -293,11 +293,12 @@ if checkStage Upload; then
   # Needs: archivePath, releaseNote, td, gitRepo, gitSHA
   if [ "n$uploadto" = "nHockeyApp" ]; then
 
-    hockeyToken=$(security 2>&1 >/dev/null find-internet-password -gs HOCKEYAPP_TOKEN | cut -d '"' -f 2)
-    if [ "n$hockeyToken" = "n" ]; then
-      echo "Missing token for upload!!!"
-      exit 1
-    fi
+    # Might not need this with the HockeyApp UI.
+#    hockeyToken=$(security 2>&1 >/dev/null find-internet-password -gs HOCKEYAPP_TOKEN | cut -d '"' -f 2)
+#    if [ "n$hockeyToken" = "n" ]; then
+#      echo "Missing token for upload!!!"
+#      exit 1
+#    fi
 
     dryrunp puck "-repository_url=$gitRepo" \
       -commit_sha=$gitSHA \
@@ -306,13 +307,15 @@ if checkStage Upload; then
       -upload=all \
       -submit=manual \
       -download=true \
-      -open=notify \
-      -api_token=$hockeyToken \
+      -tags=exosite \
+      -open=nothing \
       "$archivePath"
+
+#      -api_token=$hockeyToken 
 
     # gotta wait a little otherwise we clean up before everything gets loaded.
     # puck still launches the full HockeyApp UI.  So we might want to consider moving
-    # back to the curl method.
+    # back to the curl method. Actually finding that I like the UI coming up.
     sleep 10
   fi
 
