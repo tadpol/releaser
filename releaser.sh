@@ -172,7 +172,7 @@ fi
 # Needs: workspace, scheme, infoFile
 # Returns: version
 if checkStage Archive; then
-  dryrunp xctool -workspace "$workspace" -scheme "$scheme" archive
+  dryrunp xctool -workspace "$workspace" -scheme "$scheme" -sdk iphoneos archive
 fi
 
 # Cannot get the correct build number until after we do the build.
