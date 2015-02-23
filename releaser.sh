@@ -12,7 +12,7 @@ set -e
 
 ########################################
 # Set the default stages to run.
-stages="Setup AskVersion Provisioning Archive TrimReleaseNotes Upload"
+stages="Setup AskVersion UpdateBuildNumber UpdateReleaseNotes Provisioning Archive TrimReleaseNotes Upload"
 
 
 dry=no
@@ -164,12 +164,24 @@ fi
 ### Update build number with number of git commits
 # Needs: infoFile shortVersion
 # Returns: version
-buildNumber=$(git rev-list HEAD | wc -l | tr -d ' ')
-dryrunp /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $buildNumber" "$infoFile"
-
+if checkStage UpdateBuildNumber; then
+  buildNumber=$(git rev-list HEAD | wc -l | tr -d ' ')
+  dryrunp /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $buildNumber" "$infoFile"
+else
+  buildNumber=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$infoFile")
+fi
 version=v${shortVersion}-$buildNumber
-
 printVariables "Will release version" "$version"
+
+###################################################################################################
+### Update Release Notes with date and version
+# Needs: td, releaseNotes
+if checkStage UpdateReleaseNotes; then
+  relnTmp=$td/releasenotes.markdown
+  datestamp=$(date '+%d %b %Y')
+  cat "$releaseNotes" | sed -e "s/^##\$/## $datestamp/" -e "s/^###\$/### $version/" > "$relnTmp"
+  mv "$relnTmp" "$releaseNotes"
+fi
 
 ###################################################################################################
 ### Check git for tag
@@ -178,6 +190,7 @@ printVariables "Will release version" "$version"
 
 if ! ( git tag -l | grep -q "$version" ); then
   # Not there, add it
+  dryrunp git commit -a -m "Release $version"
   dryrunp git tag $version -m "Release $version"
 
 fi
