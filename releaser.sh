@@ -223,7 +223,9 @@ fi
 # Needs: infoFile
 # Returns: 
 if checkStage Archive; then
-  dryrunp ipa build --clean --archive --embed "${profileFile}"
+  dryrunp ipa build --clean --archive --embed "${profileFile}" --destination "$td"
+  ipaFile=$(find "$td" -name '*.ipa' | head -1)
+  dsymFile=$(find "$td" -name '*.dSYM.zip' | head -1)
 fi
 
 ###################################################################################################
@@ -256,24 +258,45 @@ if checkStage Upload; then
   if [ "n$uploadto" = "nHockeyApp" ]; then
     # consider ipa distribute:hockeyapp
 
-    archivePath=$(find ~/Library/Developer/Xcode/Archives -type d -name "$target*.xcarchive" | tail -1)
-    printVariables archivePath "$archivePath"
+    if [ "n$usePuck" == "nno" ]; then
+      hockeyToken=$(security 2>&1 >/dev/null find-internet-password -gs HOCKEYAPP_TOKEN | cut -d '"' -f 2)
+      if [ "n$hockeyToken" = "n" ]; then
+        echo "Missing token for upload!!!"
+        exit 1
+      fi
+      notes=$(cat "$releasedNote")
 
-    dryrunp puck "-repository_url=$gitRepo" \
-      -commit_sha=$gitSHA \
-      -notes_type=markdown \
-      "-notes_path=$releasedNote" \
-      -upload=all \
-      -submit=manual \
-      -download=true \
-      -tags=exosite \
-      -open=nothing \
-      "$archivePath"
+      export "HOCKEYAPP_API_TOKEN=$hockeyToken"
+      dryrunp ipa distribute:hockeyapp \
+        --file "$ipaFile" \
+        --dsym "$dsymFile" \
+        --markdown \
+        --notes "$notes" \
+        --tags exosite \
+        --downloadOff \
+        --commit-sha "$gitSHA" \
+        --repository-url "$gitRepo"
+      unset HOCKEYAPP_API_TOKEN
 
-    # gotta wait a little otherwise we clean up before everything gets loaded.
-    # puck still launches the full HockeyApp UI.  So we might want to consider moving
-    # back to the curl method. Actually finding that I like the UI coming up.
-    sleep 10
+    else
+      dryrunp puck "-repository_url=$gitRepo" \
+        -commit_sha=$gitSHA \
+        -notes_type=markdown \
+        "-notes_path=$releasedNote" \
+        -upload=all \
+        -submit=manual \
+        -download=true \
+        -tags=exosite \
+        -open=nothing \
+        "-dsym_path=$dsymFile" \
+        "$ipaFile"
+
+      # gotta wait a little otherwise we clean up before everything gets loaded.
+      # puck still launches the full HockeyApp UI.  So we might want to consider moving
+      # back to the curl method. Actually finding that I like the UI coming up.
+      sleep 10
+    fi
+
   fi
 
 fi
