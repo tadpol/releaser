@@ -5,7 +5,6 @@
 # Options:
 #  -h       Help Text
 #  -n       Dry run.
-#  -t       Just run tests
 #  -X       Do not delete temp dir
 
 set -e
@@ -24,9 +23,6 @@ while getopts ":ntXhS:s:" opt; do
     n)
       dry=yes
       ;;
-    t)
-      stages="Setup AskVersion Test"
-      ;;
     X)
       cleanup=no
       ;;
@@ -44,7 +40,6 @@ releaser [options]
 Options:
  -h       Help Text
  -n       Dry run.
- -t       Just run tests
  -X       Do not delete temp dir
 EOF
       exit 2
