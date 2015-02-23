@@ -135,7 +135,8 @@ fi
 team='Exosite LLC'
 
 if [ -z "$profileName" ]; then 
-  profileName=$(ios profiles --team "$team" --format csv | grep ".$target" | awk -F, '{print $1}')
+  pn=$(echo "$target"| tr ' ' -)
+  profileName=$(ios profiles --team "$team" --format csv | grep ".$pn" | awk -F, '{print $1}')
 fi
 
 printVariables Workspace "$workspace" Target "$target"
@@ -205,17 +206,15 @@ printVariables Repo "$gitRepo" SHA "$gitSHA"
 # - list all devices on team
 # - filter by 'group'
 #  then what?
+# Still cannot modify the 'Xcode managed' profiles.
 
 ###################################################################################################
 ### Get provisioning profile
 # Needs: team profileName
 # Returns: profileFile
 if checkStage Provisioning; then
-  profileFile=$(echo "$profileName"| tr ' ' _).mobileprovision
-  if [ -f "$profileFile" ]; then
-    rm "$profileName"
-  fi
-  ios profiles:download --team "$team" "$profileName"
+  ( cd "$td"; ios profiles:download --team "$team" "$profileName" )
+  profileFile=$(find "$td" -name '*.mobileprovision' |head -1)
   printVariables ProfileFile "$profileFile"
 fi
 
