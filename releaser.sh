@@ -135,8 +135,8 @@ fi
 
 configFile=.rpjProject
 if [ -f "$configFile" ]; then
-	team=`yaml2json < $configFile | jq .ios.team`
-	bundleID=`yaml2json < $configFile | jq .bundleID`
+	team=`yaml2json < $configFile | jq -r .ios.team`
+	bundleID=`yaml2json < $configFile | jq -r .bundleID`
 fi
 [ "n" = "n$team" ] && echo "Missing team" && exit 1
 [ "n" = "n$bundleID" ] && echo "Missing bundleID" && exit 1
