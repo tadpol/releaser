@@ -132,12 +132,16 @@ if [ ! -f "$releaseNotes" ]; then
   releaseNotes=''
   removeStage TrimReleaseNotes
 fi
-team='Exosite LLC'
 
-if [ -z "$profileName" ]; then 
-  pn=$(echo "$target"| tr ' ' -)
-  profileName=$(ios profiles --team "$team" --format csv | grep ".$pn" | awk -F, '{print $1}')
+configFile=.rpjProject
+if [ -f "$configFile" ]; then
+	team=`yaml2json < $configFile | jq .ios.team`
+	bundleID=`yaml2json < $configFile | jq .bundleID`
 fi
+[ "n" = "n$team" ] && echo "Missing team" && exit 1
+[ "n" = "n$bundleID" ] && echo "Missing bundleID" && exit 1
+
+profileName="RP: $bundleID"
 
 printVariables Workspace "$workspace" Target "$target"
 printVariables Team "$team" Profile "$profileName"
