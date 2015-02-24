@@ -137,11 +137,18 @@ configFile=.rpjProject
 if [ -f "$configFile" ]; then
 	team=`yaml2json < $configFile | jq -r .ios.team`
 	bundleID=`yaml2json < $configFile | jq -r .bundleID`
+	#profileName=`yaml2json < $configFile | jq -r .ios.profile`
 fi
 [ "n" = "n$team" ] && echo "Missing team" && exit 1
 [ "n" = "n$bundleID" ] && echo "Missing bundleID" && exit 1
 
-profileName="RP: $bundleID"
+if [ -z "$profileName" ];then
+  ios profiles --team "$team" --format csv > $td/profiles.csv
+  profileName=$(grep "RP: $bundleID" < $td/profiles.csv | head -1 | awk -F, '{print $1}')
+  if [ -z "$profileName" ];then
+    profileName=$(grep "$bundleID" < $td/profiles.csv | head -1 | awk -F, '{print $1}')
+  fi
+fi
 
 printVariables Workspace "$workspace" Target "$target"
 printVariables Team "$team" Profile "$profileName"
