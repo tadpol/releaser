@@ -6,7 +6,7 @@
 # Both the HockeyApp entry and the AppleDev Profile must be created first.
 
 # Depends on:
-# - yaml2json: npm install -g yaml2json
+# - yaml2json: ruby -rYAML -rJSON -e 'puts JSON.generate(YAML.load(ARGF))'
 # - jq: brew install jq
 # - ios: gem install nomad-cli
 # - curl: 

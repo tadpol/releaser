@@ -7,6 +7,13 @@
 #  -n       Dry run.
 #  -X       Do not delete temp dir
 
+# Depends on:
+# - yaml2json: ruby -rYAML -rJSON -e 'puts JSON.generate(YAML.load(ARGF))'
+# - jq: brew install jq
+# - ipa, ios: gem install nomad-cli
+# - puck: Installed from HockeyApp.app
+
+
 set -e
 #set -x
 
@@ -296,7 +303,6 @@ if checkStage Upload; then
         --markdown \
         --notes "$notes" \
         --tags exosite \
-        --downloadOff \
         --commit-sha "$gitSHA" \
         --repository-url "$gitRepo"
       unset HOCKEYAPP_API_TOKEN
