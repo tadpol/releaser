@@ -18,15 +18,28 @@ bundleID=''
 team=''
 
 baseURL='https://rink.hockeyapp.net/api/2/'
-configFile=.rpjProject
+
+#############
+# Load a config key from either the project local, or user local config file
+loadKey() {
+	key=$1
+	ret=''
+	configFile=.rpjProject
+	if [ -f "$configFile" ] && ret=`yaml2json < "$configFile" | jq -e -r "$key"`; then
+		echo "$ret"
+		return
+	elif [ -f "$HOME/$configFile" ] && ret=`yaml2json < "$HOME/$configFile" | jq -e -r "$key"`; then
+		echo "$ret"
+		return
+	fi
+	echo ""
+}
 
 ######
-# Load project overrides of the above configs 
-if [ -f "$configFile" ]; then
-	HockeyAppToken=`yaml2json < $configFile | jq -r .hockey.token`
-	bundleID=`yaml2json < $configFile | jq -r .bundleID`
-	team=`yaml2json < $configFile | jq -r .ios.team`
-fi
+
+HockeyAppToken=`loadKey .hockey.token`
+bundleID=`loadKey .bundleID`
+team=`loadKey .ios.team`
 
 [ "n" = "n$HockeyAppToken" ] && echo "Missing HockeyAppToken" && exit 1
 [ "n" = "n$bundleID" ] && echo "Missing bundleID" && exit 1

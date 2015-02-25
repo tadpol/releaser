@@ -98,6 +98,22 @@ printVariables() {
 
 
 #################################################
+# Load a config key from either the project local, or user local config file
+loadKey() {
+	key=$1
+	ret=''
+  configFile=.rpjProject
+	if [ -f "$configFile" ] && ret=`yaml2json < "$configFile" | jq -e -r "$key"`; then
+		echo "$ret"
+		return
+	elif [ -f "$HOME/$configFile" ] && ret=`yaml2json < "$HOME/$configFile" | jq -e -r "$key"`; then
+		echo "$ret"
+		return
+	fi
+	echo ""
+}
+
+#################################################
 td=$(mktemp -d ${TMPDIR}releaser.XXXXXX)
 printVariables TmpDir "$td"
 
@@ -133,12 +149,8 @@ if [ ! -f "$releaseNotes" ]; then
   removeStage TrimReleaseNotes
 fi
 
-configFile=.rpjProject
-if [ -f "$configFile" ]; then
-	team=`yaml2json < $configFile | jq -r .ios.team`
-	bundleID=`yaml2json < $configFile | jq -r .bundleID`
-	#profileName=`yaml2json < $configFile | jq -r .ios.profile`
-fi
+bundleID=`loadKey .bundleID`
+team=`loadKey .ios.team`
 [ "n" = "n$team" ] && echo "Missing team" && exit 1
 [ "n" = "n$bundleID" ] && echo "Missing bundleID" && exit 1
 
