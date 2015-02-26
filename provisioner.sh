@@ -9,6 +9,7 @@
 # - yaml2json: ruby -rYAML -rJSON -e 'puts JSON.generate(YAML.load(ARGF))'
 # - jq: brew install jq
 # - ios: gem install nomad-cli
+# - csvfix: brew install csv-fix
 # - curl: 
 
 set -e
@@ -98,42 +99,28 @@ set -x
 	curl -s -H "$header" "$url" | jq -r "$filter" > $td/hockey-unprovisioned.csv
 }
 
-# XXX ok, profiles:manage:devices:list actuall ylists all of the UDIDs in your team.  They have
-# a Y or N if they are included in the profile or not.
+# Get all of the UDIDs at AppleDev
+ios profiles:manage:devices:list --team "$team" --format csv "$profileName" > $td/ios-devices.csv
+# TODO remove header line
 
-# Get all devices from AppleDev for this team
-ios devices:list --team "$team" --format csv > $td/ios-devices.csv
-# 	- Remove matches from unprovisioned devices list
+# Which UDIDs are new?
 csvfix join -f 1:2 -inv $td/hockey-unprovisioned.csv $td/ios-devices.csv > $td/to-add-devices.csv
-#	- Add any remaining in unprovisioned devices to AppleDev
 
-# - Get all devices in profile for team.
-ios profiles:manage:devices:list --team "$team" --format csv "$profileName" > $td/ios-profile-devices.csv
-# 	- Remove matches from unprovisioned devices list
+# Which UDIDs are active?
+csvfix find -f 3 -s Y $td/ios-devices.csv > $td/ios-profile-devices.csv
+
+# Which UDIDs are not active in profile?
 csvfix join -f 1:2 -inv $td/hockey-unprovisioned.csv $td/ios-profile-devices.csv > $td/to-add-profile-devices.csv
-#	- Add any remaining in unprovisioned devices to AppleDev
+
+
+# Add UDIDs not there
+csvfix exec -r -c "ios devices:add --team \"$team\" \"%1=%2\"" $td/to-add-devices.csv
+
+# Activate UDIDs not active
+csvfix exec -r -c "ios profiles:manage:devices:add --team \"$team\" \"$profileName\" \"%1=%2\"" $td/to-add-profile-devices.csv
 
 
 exit 0
-# TODO: ok, looks like we pretty much need to work by diffing the two. 
-# So grab devices from Hockey, grab devices from ios, and compare.
-# Then back feed to the new ones.
-
-# - Get unprovisioned devices from Hockey for this app
-# - Get all devices from AppleDev for team
-# 	- Remove matches from unprovisioned devices list
-#	- Add any remaining in unprovisioned devices to AppleDev
-# - Get all devices in profile for team.
-# 	- Remove matches from unprovisioned devices list
-#	- Add any remaining in unprovisioned devices to profile
-
-
-# | while read line
-# do
-# 	echo ::$line::
-# 	ios devices:add --team "$team" "$line"
-# 	ios profiles:manage:devices:add --team "$team" "$profileName" "$line"
-# done
 cleanupdir
 
 #  vim: set sw=4 ts=4 :
