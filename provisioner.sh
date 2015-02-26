@@ -77,10 +77,16 @@ team=`loadKey .ios.team`
 ###
 profileName="RP: $bundleID"
 
+printVariables Team $team BundleID $bundleID
+printVariables Profile $profileName
+
 set -x
 
-# TODO: look for profileName, error if doesn't exist.
-#ios profiles --team "$team" --format csv | awk ''
+# look for profileName, error if doesn't exist.
+{ios profiles:list --team "$team" --format csv | grep -q "$profileName"} || {
+	echo "Profile \"$profileName\" doesn't exist!"
+	exit 1
+}
 
 # Figure out the Hockey AppID from the bundleID
 {
@@ -100,13 +106,12 @@ set -x
 }
 
 # Get all of the UDIDs at AppleDev
-ios profiles:manage:devices:list --team "$team" --format csv "$profileName" > $td/ios-devices.csv
-# TODO remove header line
+ios profiles:manage:devices:list --team "$team" --format csv "$profileName" | tail +2 > $td/ios-devices.csv
 
 # Which UDIDs are new?
 csvfix join -f 1:2 -inv $td/hockey-unprovisioned.csv $td/ios-devices.csv > $td/to-add-devices.csv
 
-# Which UDIDs are active?
+# Which UDIDs are active? XXX Currently broken since ios command has bug.
 csvfix find -f 3 -s Y $td/ios-devices.csv > $td/ios-profile-devices.csv
 
 # Which UDIDs are not active in profile?
@@ -114,10 +119,10 @@ csvfix join -f 1:2 -inv $td/hockey-unprovisioned.csv $td/ios-profile-devices.csv
 
 
 # Add UDIDs not there
-csvfix exec -r -c "ios devices:add --team \"$team\" \"%1=%2\"" $td/to-add-devices.csv
+echo csvfix exec -r -c "ios devices:add --team \"$team\" \"%1=%2\"" $td/to-add-devices.csv
 
 # Activate UDIDs not active
-csvfix exec -r -c "ios profiles:manage:devices:add --team \"$team\" \"$profileName\" \"%1=%2\"" $td/to-add-profile-devices.csv
+echo csvfix exec -r -c "ios profiles:manage:devices:add --team \"$team\" \"$profileName\" \"%1=%2\"" $td/to-add-profile-devices.csv
 
 
 exit 0
