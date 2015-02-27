@@ -6,6 +6,7 @@ require 'json'
 require 'date'
 require 'yaml'
 require 'docopt'
+require 'vine'
 
 docs = <<DOCPOT
 Little tool for releasing a version in Jira.
@@ -25,21 +26,39 @@ rescue Docopt::Exit => e
   exit 1
 end
 
-project=''
-userpass=''
-jiraURLBase=''
-if File.exist?('.jiraProject') 
-	File.open('.jiraProject', 'r') do |file|
-		$cfg = YAML.load(file)
-		project = $cfg['project']
-		userpass = $cfg['userpass']
-		jiraURLBase = $cfg['jira']
+class ProjectConfig
+	def load()
+		cfgFiles = [ '.rpjProject', ENV['HOME'] + '/.rpjProject']
+		@cfg = cfgFiles.map do |file|
+			result = Hash.new
+			if File.exist?(file) 
+				File.open(file, 'r') do |fio|
+					result = YAML.load(fio)
+				end
+			end
+			result
+		end
 	end
-else
-	puts 'Missing config file.'
-	exit 1
+
+	def [](key)
+		# remove first .
+		key = key[1..-1] if key[0] == '.'
+
+		@cfg.each do |acfg|
+			v = acfg.access(key)
+			return v if !v.nil?
+		end
+		return nil
+	end
 end
 
+# Load and merge config files.
+$cfg = ProjectConfig.new
+$cfg.load()
+
+project=$cfg['.jira.project']
+userpass=$cfg['.jira.userpass']
+jiraURLBase=$cfg['.jira.url']
 
 def printVars(map)
 	$stdout.print("\033[1m=:\033[0m ")
@@ -170,7 +189,7 @@ Net::HTTP.start(@rest2.host, @rest2.port, :use_ssl=>true) do |http|
 	end
 
 	### Transition to Closed
-	if $cfg.has_key?('alsoClose') and $cfg['alsoClose']
+	if $cfg['.jira.alsoClose'] == true
 		puts "Also closing." if $args['--verbose']
 
 		query = "assignee = #{@username} AND project = #{project} AND status = Resolved AND fixVersion != EMPTY" 
