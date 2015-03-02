@@ -9,26 +9,18 @@ When ever possible, information is gathered from the environment.
 This *must* be run from the top directory of the project.
 
 ## Requirements
-- Using an .xcworkspace
 - Using [CocoaPods](http://cocoapods.org)
-- [xctool](https://github.com/facebook/xctool) is installed
+- [Nomad-cli](http://nomad-cli.com)
 - Have a ReleaseNotes.markdown file in same directory as .xcworkspace
 - Format the ReleaseNotes.markdown the same way I do.
-- Specify either the HockeySDK or TestFlightSDK in Podfile
-- Build target is the rootname of the xcworkspace
-- Build scheme is the same name as the target
-- For TestFlight and HockeyApp, API tokens are in the keychain as internet passwords.
-  - service `http://TF_API_TOKEN`, Account name is target name
-  - service `http://TF_TEAM_TOKEN`, Account name is target name
-  - service `http://HOCKEYAPP_TOKEN`, Account name is target name
+- A `.rpjProject` file at the top level of the project.
 
 ## The list of things this is trying to automate
-- Update (short) version string
-- Run Tests
+- Update (short) version string and build number
 - Archive application
 - Update ReleaseNotes.markdown with build date and version number.
-- Commit, tag, and push to git
+- Commit and tag to git
 - Package up .ipa and .dSYM.zip for upload to beta service
 - Trim out just the latest notes from ReleaseNotes.markdown
-- Upload to HockeyApp or TestFlight
+- Upload to HockeyApp
 
