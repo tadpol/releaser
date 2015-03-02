@@ -5,17 +5,21 @@
 # Options:
 #  -h       Help Text
 #  -n       Dry run.
-#  -t       Just run tests
 #  -X       Do not delete temp dir
+
+# Depends on:
+# - yaml2json: ruby -rYAML -rJSON -e 'puts JSON.generate(YAML.load(ARGF))'
+# - jq: brew install jq
+# - ipa, ios: gem install nomad-cli
+# - puck: Installed from HockeyApp.app
+
 
 set -e
 #set -x
 
 ########################################
 # Set the default stages to run.
-#stages="Setup AskVersion Test Archive UpdateReleaseNotes Commit Jira IPAandDSYM TrimReleaseNotes HockeyApp TestFlight CopyToDownloads"
-#stages="Setup AskVersion Test Archive UpdateReleaseNotes Commit IPAandDSYM TrimReleaseNotes Upload"
-stages="Setup AskVersion Archive UpdateReleaseNotes Commit TrimReleaseNotes Upload"
+stages="Setup AskVersion UpdateBuildNumber UpdateReleaseNotes Provisioning Archive TrimReleaseNotes Upload"
 
 
 dry=no
@@ -25,9 +29,6 @@ while getopts ":ntXhS:s:" opt; do
   case "$opt" in
     n)
       dry=yes
-      ;;
-    t)
-      stages="Setup AskVersion Test"
       ;;
     X)
       cleanup=no
@@ -46,7 +47,6 @@ releaser [options]
 Options:
  -h       Help Text
  -n       Dry run.
- -t       Just run tests
  -X       Do not delete temp dir
 EOF
       exit 2
@@ -86,6 +86,10 @@ checkStage() {
   fi
 }
 
+removeStage() {
+  stages=$(echo "$stages" | sed -e "s/$1//")
+}
+
 #################################################
 printVariables() {
   echo -en "\033[1m=:\033[0m "
@@ -99,6 +103,22 @@ printVariables() {
   echo ""
 }
 
+
+#################################################
+# Load a config key from either the project local, or user local config file
+loadKey() {
+	key=$1
+	ret=''
+  configFile=.rpjProject
+	if [ -f "$configFile" ] && ret=`yaml2json < "$configFile" | jq -e -r "$key"`; then
+		echo "$ret"
+		return
+	elif [ -f "$HOME/$configFile" ] && ret=`yaml2json < "$HOME/$configFile" | jq -e -r "$key"`; then
+		echo "$ret"
+		return
+	fi
+	echo ""
+}
 
 #################################################
 td=$(mktemp -d ${TMPDIR}releaser.XXXXXX)
@@ -124,22 +144,34 @@ workspace=$(find . -depth 1 -name '*.xcworkspace')
 target=$(basename -s .xcworkspace "$workspace")
 infoFile=$(find . -name "$target-Info.plist")
 if [ -z "$infoFile" -a -f "$target/Info.plist" ]; then
-infoFile="$target/Info.plist"
+  infoFile="$target/Info.plist"
 fi
 uploadto=copy
 if (grep -q HockeySDK Podfile); then
   uploadto=HockeyApp
-elif (grep -q TestFlightSDK Podfile); then
-  uploadto=TestFlight
-  stages="$stages IPAandDSYM"
 fi
 releaseNotes=$(dirname "$workspace")/ReleaseNotes.markdown
+if [ ! -f "$releaseNotes" ]; then
+  releaseNotes=''
+  removeStage TrimReleaseNotes
+fi
 
-# For now, assume the scheme is the workspace.
-scheme=$target
+bundleID=`loadKey .bundleID`
+team=`loadKey .ios.team`
+[ "n" = "n$team" ] && echo "Missing team" && exit 1
+[ "n" = "n$bundleID" ] && echo "Missing bundleID" && exit 1
 
-printVariables Workspace "$workspace" Target "$target" Scheme "$scheme"
-printVariables BetaDist "$uploadto" "Jira Project" "$project"
+if [ -z "$profileName" ];then
+  ios profiles --team "$team" --format csv > $td/profiles.csv
+  profileName=$(grep "RP: $bundleID" < $td/profiles.csv | head -1 | awk -F, '{print $1}')
+  if [ -z "$profileName" ];then
+    profileName=$(grep "$bundleID" < $td/profiles.csv | head -1 | awk -F, '{print $1}')
+  fi
+fi
+
+printVariables Workspace "$workspace" Target "$target"
+printVariables Team "$team" Profile "$profileName"
+printVariables BetaDist "$uploadto" 
 printVariables InfoFile "$infoFile" "Release Notes" "$releaseNotes"
 printVariables Stages "$stages"
 
@@ -158,32 +190,22 @@ if checkStage AskVersion; then
     dryrunp /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $preferredVersion" "$infoFile"
   fi
 fi
-printVariables "Will release version" "$shortVersion"
 
 ###################################################################################################
-### Run Unit Tests
-# Needs: workspace, scheme
-if checkStage Test; then
-  dryrunp xctool -workspace "$workspace" -scheme "$scheme" -sdk iphonesimulator7.1 test
-fi
-
-###################################################################################################
-### Build the Archive
-# Needs: workspace, scheme, infoFile
+### Update build number with number of git commits
+# Needs: infoFile shortVersion
 # Returns: version
-if checkStage Archive; then
-  dryrunp xctool -workspace "$workspace" -scheme "$scheme" -sdk iphoneos archive
+if checkStage UpdateBuildNumber; then
+  buildNumber=$(git rev-list HEAD | wc -l | tr -d ' ')
+  dryrunp /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $buildNumber" "$infoFile"
+else
+  buildNumber=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$infoFile")
 fi
-
-# Cannot get the correct build number until after we do the build.
-# TODO: Remove this from the post build script project stage, and put in here up above.
-buildnumber=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$infoFile")
-version=v${shortVersion}-$buildnumber
-
-printVariables Version "$version"
+version=v${shortVersion}-$buildNumber
+printVariables "Will release version" "$version"
 
 ###################################################################################################
-### Update Release Notes
+### Update Release Notes with date and version
 # Needs: td, releaseNotes
 if checkStage UpdateReleaseNotes; then
   relnTmp=$td/releasenotes.markdown
@@ -193,76 +215,48 @@ if checkStage UpdateReleaseNotes; then
 fi
 
 ###################################################################################################
-### Commit this all and Tag the release.
+### Check git for tag
 # Needs: version
 # Returns: gitRepo, gitSHA
-if checkStage Commit; then
+
+if ! ( git tag -l | grep -q "$version" ); then
+  # Not there, add it
   dryrunp git commit -a -m "Release $version"
   dryrunp git tag $version -m "Release $version"
-  dryrunp git push
 
-  # Grab some stuff for hockey app.
-  gitRepo=$(git remote -v | head -1 | awk '{print $2}')
-  gitSHA=$(git show-ref heads/master | head -1 | awk '{print $1}')
-else
-  gitRepo=
-  gitSHA=
 fi
+gitRepo=$(git remote -v | head -1 | awk '{print $2}')
+gitSHA=$(git show-ref heads/master | head -1 | awk '{print $1}')
 printVariables Repo "$gitRepo" SHA "$gitSHA"
 
 ###################################################################################################
-### Ready for next version.
-### 
-# Needs: buldNumber, infoFile, td, releaseNotes
-if checkStage ReadNextRelease; then
-  relnTmp=$td/releasenotes.markdown
-  cat "$releaseNotes" | sed -e '3i\
-##
 ###
-' > "$relnTmp"
-  mv "$relnTmp" "$releaseNotes"
-  dryrunp /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $((buildNumber + 1))" "$infoFile"
+
+# Check and update devices in provisioning profile?
+# - list all devices on team
+# - filter by 'group'
+#  then what?
+# Still cannot modify the 'Xcode managed' profiles.
+
+###################################################################################################
+### Get provisioning profile
+# Needs: team profileName
+# Returns: profileFile
+if checkStage Provisioning; then
+  ( cd "$td"; ios profiles:download --team "$team" "$profileName" )
+  profileFile=$(find "$td" -name '*.mobileprovision' |head -1)
+  printVariables ProfileFile "$profileFile"
 fi
 
 ###################################################################################################
-### In Jira, create and release this version.
-### Attaching all resolved, but unversioned issues to this version
-# Needs: project, version
-if checkStage Jira; then
-  echo nothing yet.
+### Build the Archive
+# Needs: infoFile
+# Returns: 
+if checkStage Archive; then
+  dryrunp ipa build --clean --archive --embed "${profileFile}" --destination "$td"
+  ipaFile=$(find "$td" -name '*.ipa' | head -1)
+  dsymFile=$(find "$td" -name '*.dSYM.zip' | head -1)
 fi
-
-
-###################################################################################################
-### Build up the .ipa and dSYM.zip
-# Needs: td, target
-# Returns: archivePath, appName, ipa, dsymZipped
-
-#archivePath=$(find ~/Library/Developer/Xcode/Archives -type d -Btime -60m -name '*.xcarchive' | head -1)
-archivePath=$(find ~/Library/Developer/Xcode/Archives -type d -name "$target*.xcarchive" | tail -1)
-printVariables archivePath "$archivePath"
-
-if checkStage IPAandDSYM; then
-  #echo -e "\033[1m=:\033[0m archivePath=$archivePath"
-  appPath=$(/usr/libexec/PlistBuddy -c "Print :ApplicationProperties:ApplicationPath" "$archivePath/Info.plist" )
-  #appName=$(/usr/libexec/PlistBuddy -c "Print :Name" "$archivePath/Info.plist" )
-  appName=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$archivePath/Products/$appPath/Info.plist")
-  echo -e "\033[1m=:\033[0m appName=$appName  appPath=$appPath"
-
-  ipa=$td/${appName}.ipa
-  dryrunp xcrun -sdk iphoneos PackageApplication "$archivePath/Products/$appPath" -o "$ipa"
-
-  dsymPath=$archivePath/dSYMs/${appName}.app.dSYM
-  dsymZipped=$td/${appName}.app.dSYM.zip
-  dryrunp zip -q -r -9 "$dsymZipped" "$dsymPath"
-else
-  appName=
-  ipa=
-  dsymZipped=
-fi
-printVariables AppName "$appName"
-printVariables IPA "$ipa"
-printVariables DSYM "$dsymZipped"
 
 ###################################################################################################
 ### Trim to just the current release note section
@@ -292,62 +286,46 @@ if checkStage Upload; then
   ### HockeyApp Upload
   # Needs: archivePath, releaseNote, td, gitRepo, gitSHA
   if [ "n$uploadto" = "nHockeyApp" ]; then
+    # consider ipa distribute:hockeyapp
 
-    # Might not need this with the HockeyApp UI.
-#    hockeyToken=$(security 2>&1 >/dev/null find-internet-password -gs HOCKEYAPP_TOKEN | cut -d '"' -f 2)
-#    if [ "n$hockeyToken" = "n" ]; then
-#      echo "Missing token for upload!!!"
-#      exit 1
-#    fi
+    if [ "n$usePuck" == "nno" ]; then
+      hockeyToken=$(security 2>&1 >/dev/null find-internet-password -gs HOCKEYAPP_TOKEN | cut -d '"' -f 2)
+      if [ "n$hockeyToken" = "n" ]; then
+        echo "Missing token for upload!!!"
+        exit 1
+      fi
+      notes=$(cat "$releasedNote")
 
-    dryrunp puck "-repository_url=$gitRepo" \
-      -commit_sha=$gitSHA \
-      -notes_type=markdown \
-      "-notes_path=$releasedNote" \
-      -upload=all \
-      -submit=manual \
-      -download=true \
-      -tags=exosite \
-      -open=nothing \
-      "$archivePath"
+      export "HOCKEYAPP_API_TOKEN=$hockeyToken"
+      dryrunp ipa distribute:hockeyapp \
+        --file "$ipaFile" \
+        --dsym "$dsymFile" \
+        --markdown \
+        --notes "$notes" \
+        --tags exosite \
+        --commit-sha "$gitSHA" \
+        --repository-url "$gitRepo"
+      unset HOCKEYAPP_API_TOKEN
 
-#      -api_token=$hockeyToken 
+    else
+      dryrunp puck "-repository_url=$gitRepo" \
+        -commit_sha=$gitSHA \
+        -notes_type=markdown \
+        "-notes_path=$releasedNote" \
+        -upload=all \
+        -submit=manual \
+        -download=true \
+        -tags=exosite \
+        -open=nothing \
+        "-dsym_path=$dsymFile" \
+        "$ipaFile"
 
-    # gotta wait a little otherwise we clean up before everything gets loaded.
-    # puck still launches the full HockeyApp UI.  So we might want to consider moving
-    # back to the curl method. Actually finding that I like the UI coming up.
-    sleep 10
-  fi
-
-  ##################################################################################################
-  ### TestFlight Upload
-  # Needs: appName, ipa, dsymZipped, releaseNote, td
-  if [ "n$uploadto" = "nTestFlight" ]; then
-    # FIXME: If security cannot fins the key, this does not fail the script.
-    tfapitoken=$(security 2>&1 >/dev/null find-internet-password -gs TF_API_TOKEN -a "$appName" | cut -d '"' -f 2)
-    tfteamtoken=$(security 2>&1 >/dev/null find-internet-password -gs TF_TEAM_TOKEN -a "$appName" | cut -d '"' -f 2)
-
-    if [ "n$tfapitoken" = "n" -o "n$tfteamtoken" = "n" ]; then
-      echo "Missing tokens for upload!!!"
-      exit 1
+      # gotta wait a little otherwise we clean up before everything gets loaded.
+      # puck still launches the full HockeyApp UI.  So we might want to consider moving
+      # back to the curl method. Actually finding that I like the UI coming up.
+      sleep 10
     fi
 
-    dryrunp curl http://testflightapp.com/api/builds.json \
-      -F "file=@$ipa" \
-      -F "dsym=@$dsymZipped" \
-      -F "api_token=$tfapitoken" \
-      -F "team_token=$tfteamtoken" \
-      -F "notes=@$releasedNote" \
-      -F notify=True \
-      -o $td/uploadResults.json
-    
-  fi
-
-  ##################################################################################################
-  ### Just copy to Downloads
-  # Needs: ipa, dsymZipped
-  if [ "n$uploadto" = "ncopy" ]; then
-    mv "$dsymZipped" "$ipa" ~/Downloads/
   fi
 
 fi
