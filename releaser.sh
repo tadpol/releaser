@@ -161,6 +161,7 @@ team=`loadKey .ios.team`
 [ "n" = "n$team" ] && echo "Missing team" && exit 1
 [ "n" = "n$bundleID" ] && echo "Missing bundleID" && exit 1
 
+profileName=`loadKey .ios.profile`
 if [ -z "$profileName" ];then
   ios profiles --team "$team" --format csv > $td/profiles.csv
   profileName=$(grep "RP: $bundleID" < $td/profiles.csv | head -1 | awk -F, '{print $1}')
