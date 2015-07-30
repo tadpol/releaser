@@ -2,6 +2,8 @@
 
 An attempt to gather all of the common steps I do every time I push an iOS app release.
 
+This has been completely replaced with [Fastlane](https://fastlane.tools/).
+
 It is a little haphazard at the moment.
 
 When ever possible, information is gathered from the environment.
